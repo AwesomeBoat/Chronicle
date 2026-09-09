@@ -1,0 +1,32 @@
+requests==2.34.2
+python-dotenv==1.2.3
+# Python 3.14 evalue les annotations paresseusement (PEP 649). Les versions
+# <= 2.0.40 les recoivent sous forme de chaines et echouent sur un
+# "Mapped[datetime | None]" au chargement de models.py :
+#   TypeError: descriptor '__getitem__' requires a 'typing.Union' object
+# Verifie le 2026-08-25 : 2.0.40 KO, 2.0.41 OK. 2.0.52 est la derniere
+# publiee et la premiere a declarer officiellement Python 3.14 et 3.15.
+SQLAlchemy==2.0.52
+tzdata==2026.3
+psycopg[binary]==3.3.4
+
+# --------------------------------------------------------------- V3 analytics
+# pandas 3.0 : le dtype "string" est devenu le defaut (fini l'object pour du
+# texte) et le Copy-on-Write est obligatoire - une vue ne se modifie plus
+# silencieusement. Verifie sur Python 3.14 le 2026-08-26.
+pandas==3.0.5
+matplotlib==3.11.1
+# Pas de scipy : ses .pyd sont refuses au chargement par la strategie de
+# controle d'application de Windows sur cette machine ("DLL load failed ...
+# Une strategie de controle d'application a bloque ce fichier"), et la
+# reinstallation n'y change rien. Les p-values sont donc calculees dans
+# analytics/correlate.py, avec la seule bibliotheque math.
+
+# Noyau Jupyter pour notebooks/exploration.ipynb (etape 8).
+# Facultatif : aucun module de analytics/ n en depend.
+ipykernel==7.3.0
+
+# Notebook (etape 8). Utile au developpement, inutile a la collecte :
+# run_collect.bat n'en a pas besoin. Installer avec
+#   pip install ipykernel nbformat
+nbformat==5.11.1

@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+tokens.json
+data/raw/
+logs/
+ROADMAP.md
+
+# Sorties de la V3 : regenerables par `python main.py report`.
+# Un rapport est date ; les versionner ferait grossir le depot d'un
+# dossier de PNG par execution, pour une information deja reproductible.
+reports/
+data/figures/
+notebooks/.ipynb_checkpoints/
+
+# --- V4 : nouvelles sources
+# CIQUAL est une table PUBLIQUE et regenerable (3,5 Mo de zip + 900 Ko de
+# JSON). La retelecharger prend 20 s : la versionner alourdirait le depot
+# pour une donnee qui n'appartient pas au projet.
+#   python main.py ciqual   la reconstruit
+data/ciqual/
+
+# Journal alimentaire : donnee personnelle, meme regle que data/raw/.
+#
+# ATTENTION - difference importante avec data/raw/ : le journal N'EST PAS
+# regenerable. Polar peut renvoyer ses 28 derniers jours, personne ne peut
+# se souvenir de ce que j'ai mange le 12 mars. C'est le seul dossier du
+# projet dont la perte est definitive : le sauvegarder ailleurs.
+data/food/

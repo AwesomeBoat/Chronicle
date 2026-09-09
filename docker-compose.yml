@@ -1,0 +1,32 @@
+# Nom de projet Compose figé explicitement.
+#
+# Par défaut, Compose le déduit du nom du DOSSIER. Le projet s'est appelé
+# "DigitalTwin" puis "Chronicle" : sans cette ligne, le renommage aurait fait
+# pointer Compose vers un volume "chronicle_postgres_data" NEUF, et la base
+# existante (volume "digitaltwin_postgres_data") serait devenue invisible.
+#
+# Les données de ce projet ne sont pas regénérables : Polar ne redonne que
+# 28 jours, data/food/ rien du tout. Ne pas changer cette valeur.
+name: digitaltwin
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: digitaltwin_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-digitaltwin}
+      POSTGRES_USER: ${POSTGRES_USER:-twin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-twin_local_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-twin} -d ${POSTGRES_DB:-digitaltwin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
