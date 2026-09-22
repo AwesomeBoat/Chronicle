@@ -1,0 +1,8 @@
+# Tests : python -m pytest tests/
+#   tests/pc_tracker/   le tracker seul (aucune base requise)
+#   tests/chronicle/    connecteur PC et API (PostgreSQL de test requis,
+#                       sinon ces tests sont sautes - voir tests/conftest.py)
+-r requirements.txt
+-r pc/tracker/requirements.txt
+pytest==9.1.1
+httpx==0.28.1

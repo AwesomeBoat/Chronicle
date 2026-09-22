@@ -1,0 +1,11 @@
+# Dependances du TRACKER seul (sur une machine sans Chronicle).
+# Le tracker n'utilise ni SQLAlchemy, ni pandas, ni le .env de Chronicle.
+psutil==7.2.2
+
+# Optionnel, Windows : media en cours de lecture (Spotify, YouTube...).
+# Sans ces paquets, le collecteur "media" se declare indisponible.
+winrt-runtime==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation.Collections==3.2.1; sys_platform == "win32"
+winrt-Windows.Media==3.2.1; sys_platform == "win32"
+winrt-Windows.Media.Control==3.2.1; sys_platform == "win32"

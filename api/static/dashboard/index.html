@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chronicle · Activité PC</title>
+  <meta name="description" content="Activité PC collectée par Chronicle : temps réel d'utilisation, applications, sites, rythme, Git et santé de la collecte.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='9' width='3' height='6' rx='1' fill='%232a78d6'/%3E%3Crect x='6' y='5' width='3' height='10' rx='1' fill='%23eb6834'/%3E%3Crect x='11' y='2' width='3' height='13' rx='1' fill='%231baf7a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body class="viz-root">
+  <div class="page">
+    <header class="entete">
+      <div>
+        <h1>Activité PC</h1>
+        <p>Chronicle · le tracker mesure, Chronicle calcule. Rien ne quitte cette machine.</p>
+      </div>
+      <div class="etat" id="etat" role="status">Chargement…</div>
+    </header>
+
+    <nav class="filtres" aria-label="Filtres">
+      <label>Machine <select id="f-machine"></select></label>
+      <div class="presets" role="group" aria-label="Période">
+        <button type="button" data-jours="1" aria-pressed="false">Aujourd'hui</button>
+        <button type="button" data-jours="7" aria-pressed="true">7 jours</button>
+        <button type="button" data-jours="30" aria-pressed="false">30 jours</button>
+        <button type="button" data-jours="90" aria-pressed="false">90 jours</button>
+      </div>
+      <label>Du <input type="date" id="f-debut"></label>
+      <label>au <input type="date" id="f-fin"></label>
+      <span class="espace"></span>
+      <button type="button" id="f-theme" title="Thème : automatique, clair, sombre">Thème : auto</button>
+    </nav>
+
+    <main id="contenu">
+      <section class="kpis" id="kpis" aria-label="Chiffres clés"></section>
+
+      <section class="carte" id="carte-periode">
+        <div class="carte-entete">
+          <h2 id="titre-periode">Temps au premier plan, par jour</h2>
+          <button type="button" class="bascule-table">Tableau</button>
+        </div>
+        <p class="aide">Colonnes : temps où une application était au premier plan, par catégorie. Point : temps réellement actif (au moins une entrée clavier ou souris dans la seconde). Cliquer une colonne affiche la journée.</p>
+        <div class="legende" id="legende-periode"></div>
+        <div class="graphe" id="g-periode"></div>
+      </section>
+
+      <section class="carte" id="carte-journee">
+        <div class="carte-entete">
+          <h2>Chronologie · <span id="titre-journee"></span></h2>
+          <span class="jour-nav">
+            <button type="button" id="jour-avant" aria-label="Jour précédent">&#8249;</button>
+            <button type="button" id="jour-apres" aria-label="Jour suivant">&#8250;</button>
+            <button type="button" class="bascule-table">Tableau</button>
+          </span>
+        </div>
+        <p class="aide">Les données brutes du tracker : chaque barre est un intervalle mesuré (fenêtre au premier plan, inactivité, verrou, veille).</p>
+        <div class="graphe" id="g-journee"></div>
+      </section>
+
+      <div class="grille-2">
+        <section class="carte" id="carte-apps">
+          <div class="carte-entete">
+            <h2>Applications</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Les 12 applications les plus longtemps au premier plan. Couleur : catégorie.</p>
+          <div class="legende" id="legende-apps"></div>
+          <div class="graphe" id="g-apps"></div>
+        </section>
+        <section class="carte" id="carte-sites">
+          <div class="carte-entete">
+            <h2>Sites web</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Temps sur chaque domaine, navigateur au premier plan (extension requise).</p>
+          <div class="graphe" id="g-sites"></div>
+        </section>
+      </div>
+
+      <div class="grille-2">
+        <section class="carte" id="carte-rythme">
+          <div class="carte-entete">
+            <h2>Rythme de la semaine</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Minutes réellement actives, par jour de la semaine et par heure.</p>
+          <div class="graphe" id="g-rythme"></div>
+        </section>
+        <section class="carte" id="carte-transitions">
+          <div class="carte-entete">
+            <h2>Changements de contexte</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Passages d'une application à une autre, les plus fréquents.</p>
+          <div class="graphe" id="g-transitions"></div>
+        </section>
+      </div>
+
+      <div class="grille-2">
+        <section class="carte" id="carte-git">
+          <div class="carte-entete">
+            <h2>Commits Git</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Commits faits sur cette machine (reflog), les plus récents.</p>
+          <div class="graphe" id="g-git"></div>
+        </section>
+        <section class="carte" id="carte-terminal">
+          <div class="carte-entete">
+            <h2>Terminal et fichiers</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Programmes les plus lancés (hook de terminal) et types de fichiers les plus modifiés.</p>
+          <div class="graphe" id="g-terminal"></div>
+        </section>
+      </div>
+
+      <div class="grille-2">
+        <section class="carte" id="carte-machine">
+          <div class="carte-entete">
+            <h2>Charge de la machine</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Moyennes par période. Deux graphiques séparés : deux grandeurs, deux échelles.</p>
+          <div class="graphe" id="g-machine"></div>
+        </section>
+        <section class="carte" id="carte-reseau">
+          <div class="carte-entete">
+            <h2>Réseau</h2>
+            <button type="button" class="bascule-table">Tableau</button>
+          </div>
+          <p class="aide">Données reçues et envoyées (interfaces réelles, hors VPN et machines virtuelles).</p>
+          <div class="legende" id="legende-reseau"></div>
+          <div class="graphe" id="g-reseau"></div>
+        </section>
+      </div>
+
+      <section class="carte" id="carte-sante">
+        <div class="carte-entete"><h2>Santé de la collecte</h2></div>
+        <p class="aide">Une absence de données n'est pas une absence d'activité : voici ce que le tracker a réellement couvert.</p>
+        <div id="g-sante"></div>
+      </section>
+    </main>
+
+    <footer>Chronicle · dashboard local servi par <code>python main.py serve</code> · données : <code>v_pc_*</code>, <code>episode</code>, <code>observation</code></footer>
+  </div>
+
+  <div class="infobulle" id="infobulle" role="tooltip" hidden></div>
+  <script src="dashboard.js"></script>
+</body>
+</html>

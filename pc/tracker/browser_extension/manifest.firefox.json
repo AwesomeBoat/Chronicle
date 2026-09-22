@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Chronicle PC tracker",
+  "version": "0.1.0",
+  "description": "Signale l'onglet actif au tracker Chronicle de cette machine (127.0.0.1). Jamais en navigation privee, jamais le contenu des pages.",
+  "incognito": "not_allowed",
+  "permissions": ["tabs", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "scripts": ["background.js"] },
+  "options_ui": { "page": "options.html" },
+  "browser_specific_settings": {
+    "gecko": { "id": "chronicle-pc-tracker@local", "strict_min_version": "115.0" }
+  }
+}

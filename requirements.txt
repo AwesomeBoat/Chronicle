@@ -30,3 +30,11 @@ ipykernel==7.3.0
 # run_collect.bat n'en a pas besoin. Installer avec
 #   pip install ipykernel nbformat
 nbformat==5.11.1
+
+# ------------------------------------------------ API d'ingestion (PC tracker)
+# `python main.py serve` : recoit les lots des trackers PC. Import differe :
+# les autres commandes tournent sans. Chargement verifie sur cette machine
+# (pydantic_core est une extension compilee, acceptee par la strategie de
+# controle d'application, contrairement a scipy).
+fastapi==0.141.1
+uvicorn==0.53.0

@@ -7,6 +7,7 @@ Usage : python main.py <commande>
     analyse  : quality, describe, plots, correlate, report
     sources  : sources, ciqual, eat, food, bedroom, kindle, kindle-serve,
               kindle-import
+    push     : serve (API d'ingestion), pc (rejouer les lots PC archives)
 """
 
 # Imports auth
@@ -627,6 +628,78 @@ def cmd_kindle_serve() -> None:
                            token=token, port=port, rappel=rappel)
 
 
+# ------------------------------------------------------ sources qui poussent
+
+def cmd_serve() -> None:
+    """Lance l'API d'ingestion (le PC tracker y envoie ses lots).
+
+        python main.py serve
+        python main.py serve --host 0.0.0.0 --port 8780
+        python main.py serve --ensure-db     (demarre d'abord PostgreSQL)
+
+    127.0.0.1 par defaut : seules les applications de cette machine
+    peuvent envoyer. --host 0.0.0.0 pour accepter les autres PC du reseau
+    local (le poste Omarchy) ; Windows demandera alors d'autoriser Python
+    dans son pare-feu.
+
+    La base n'est PAS exigee au demarrage : si Docker est eteint, l'API
+    repond 503 et chaque tracker garde ses evenements jusqu'au retour de
+    la base. Import differe : FastAPI n'est necessaire qu'ici.
+    """
+    from api import settings
+    from api.app import run
+
+    def option(nom: str, defaut: str) -> str:
+        if nom in sys.argv:
+            position = sys.argv.index(nom) + 1
+
+            if position < len(sys.argv):
+                return sys.argv[position]
+
+        return defaut
+
+    hote = option("--host", settings.HOST)
+    port = int(option("--port", str(settings.PORT)))
+
+    if "--ensure-db" in sys.argv and not check_connection():
+        # Comme run_collect.bat : demarrer le conteneur est idempotent. Sans
+        # fenetre (CREATE_NO_WINDOW) : la tache planifiee tourne sous pythonw.
+        import subprocess
+        subprocess.run(["docker", "compose", "up", "-d"], cwd=BASE_DIR,
+                       capture_output=True, timeout=180,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW",
+                                             0))
+
+    if not check_connection():
+        print("Base injoignable pour l'instant - l'API repondra 503 jusqu'a "
+              "son retour (docker compose up -d).")
+
+    print(f"API d'ingestion Chronicle : http://{hote}:{port}")
+    print(f"  cle d'API : {settings.KEY_FILE.relative_to(BASE_DIR)} "
+          "(a recopier dans la configuration de chaque tracker)")
+    print("  Ctrl+C pour arreter.")
+    run(hote, port)
+
+
+def cmd_pc() -> None:
+    """Rejoue les lots PC archives dans raw_payload vers les tables.
+
+        python main.py pc                    -> toutes les machines
+        python main.py pc windows-main       -> une seule
+
+    Le pendant de `store` pour Polar : apres une correction de
+    pc/mapper.py, rejouer suffit. Idempotent (ON CONFLICT).
+    """
+    _exiger_base()
+
+    from api.ingest import replay_archived
+
+    argument = [a for a in sys.argv[2:] if not a.startswith("-")]
+    totaux = replay_archived(argument[0] if argument else None)
+    print(f"{totaux['lots']} lot(s) rejoue(s), {totaux['evenements']} "
+          f"evenement(s), {totaux['refus']} refus.")
+
+
 def _exiger_base() -> None:
     """Les commandes d'analyse ne peuvent rien faire sans la base."""
     if not check_connection():
@@ -961,6 +1034,8 @@ COMMANDS = {"auth": cmd_auth,
             "kindle": cmd_kindle,
             "kindle-serve": cmd_kindle_serve,
             "kindle-import": cmd_kindle_import,
+            "serve": cmd_serve,
+            "pc": cmd_pc,
             "lecture": cmd_lecture,
             "dbstats": cmd_dbstats,
             "resetdb": cmd_resetdb}

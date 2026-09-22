@@ -6,7 +6,8 @@ Most quantified-self apps show you a dashboard of yesterday and quietly discard
 the rest. This is the opposite: an infrastructure that collects patiently now, so
 that in two years I can ask questions I can't even formulate today.
 
-Sleep, heart rate, activity, food, room temperature, reading, screen time. Not to
+Sleep, heart rate, activity, food, room temperature, reading, screen time, computer
+activity. Not to
 look at a number this evening, but to have enough history to find out what
 actually relates to what.
 
@@ -83,6 +84,12 @@ database beyond the `Batch` contract.
 | **Bedroom sensor** | `sensors/`, in this repo | ESP32 + BME280: temperature, humidity, pressure |
 | **kindle-tracker** | separate repo | reading sessions, highlights and vocabulary lookups, read straight from the Kindle's own SQLite databases before the firmware deletes them |
 | **screenTwin** | separate repo | Android per-app screen time, via a native Kotlin module |
+| **PC tracker** | `pc/`, in this repo | focused window, real input activity, idle, sleep, apps, web pages, git, terminal, files, media, system metrics — one source per machine (`pc:windows-main`, later `pc:omarchy-desktop`), same event model on every OS. **No keylogger** |
+
+The PC is the first source that **pushes**, from several machines: it
+talks to Chronicle's ingestion API (`python main.py serve`) with the common
+event envelope shared with PhoneTracker. See
+[`docs/PC_TRACKING.md`](docs/PC_TRACKING.md).
 
 ---
 
@@ -97,7 +104,7 @@ database beyond the `Batch` contract.
 | **V4** | New sources: food journal + bedroom sensor | ✅ except hardware |
 | V5 | Machine learning, once the history justifies it | upcoming |
 
-**3 sources** · **66 metrics** · **7 tables** · **4 views**
+**5 connectors** · **88 metrics** · **7 tables** (unchanged since V1) · **11 views**
 
 ---
 
@@ -145,6 +152,8 @@ docker compose up -d
 | `LOCAL_TZ` | timezone applied to naive timestamps | `Europe/Paris` |
 | `BEDROOM_SENSOR_URL` | ESP32 module address | — (optional) |
 | `SQL_ECHO` | `1` to print every SQL statement | `0` |
+| `CHRONICLE_API_HOST` / `PORT` | ingestion API (`serve`) | `127.0.0.1` / `8780` |
+| `CHRONICLE_API_KEY` | API key for the trackers | generated in `data/api_key.txt` |
 
 `.env` and `tokens.json` are **never** versioned.
 
@@ -291,6 +300,31 @@ Views available in SQL:
 | `v_sleep` | one night | bedtime, wake time, stages, HRV, HR |
 | `v_nutrition` | one day | nutritional totals, meal count, eating window |
 | `v_chambre` | one night | temperature and humidity **during** sleep |
+| `v_lecture` / `v_livres` | one day / one book | reading sessions, highlights, progress |
+| `v_pc_daily` | machine × day | time in front / really active / idle / locked / asleep, context switches, keys, commits |
+| `v_pc_apps_daily` | machine × day × app | foreground minutes vs active minutes |
+| `v_pc_context_switches` | one switch | from app → to app, gap |
+| `v_pc_domains_daily` | machine × day × domain | minutes per website |
+| `v_pc_focus` | one window span | the flattened `app_focus` episodes |
+
+### 6. PC activity (the source that pushes)
+
+```bash
+python main.py serve         # ingestion API + dashboard: http://127.0.0.1:8780/dashboard/
+python main.py pc            # replay archived PC batches (after a mapper fix)
+python -m pc.tracker --help  # the agent itself: init, run, install, status...
+```
+
+Each tracker keeps a local queue and sends batches; if Chronicle or Docker
+is down, nothing is lost. The dashboard (active vs foreground time, apps,
+websites, day timeline, weekly rhythm, Git, collection health) reads the
+episodes and observations directly and stores nothing; it answers without a
+key from this machine only. Install, configuration, privacy, troubleshooting:
+[`pc/tracker/README.md`](pc/tracker/README.md). Event reference:
+[`docs/PC_EVENTS.md`](docs/PC_EVENTS.md).
+
+Tests: `python -m pytest tests/` (the database tests need a **dedicated**
+test database, see `tests/conftest.py` — they never touch `digitaltwin`).
 
 ---
 
@@ -307,18 +341,32 @@ auth/                  Polar OAuth2 (authorisation, callback, tokens)
 polar/                 HTTP client + one module per endpoint + mapper
 food/                  CIQUAL, portions, aliases, parser, journal, mapper
 sensors/               bedroom sensor + Arduino firmware
+kindle/                Kindle reader, receiver, Amazon export importer
 connectors/            the contract shared by every source
+
+pc/                    the PC as a source
+  schema.py            the common event model (Windows = Linux)
+  apps.py              canonical app names across OSes
+  mapper.py            connector: events → Batch
+  tracker/             the agent that runs on each PC (never imports database/)
+api/                   ingestion API for sources that push (FastAPI)
+  dashboard.py         read routes of the PC dashboard (/api/v1/pc/*)
+  static/dashboard/    the dashboard page (plain HTML/CSS/JS, no build)
 
 database/
   models.py            the 7 tables (SQLAlchemy 2.0)
   records.py           Batch — the connector ↔ database boundary
   repository.py        idempotent insertion (ON CONFLICT)
-  views.py             the 4 read views
+  views.py             the 11 read views
   connection.py        engine, sessions, pool
 
-analytics/             load, quality, describe, plots, correlate, report
+analytics/             load, quality, describe, plots, correlate, report,
+                       pc_categories (app → category, for the dashboard)
 notebooks/             Jupyter exploration
+tests/                 pytest: tracker, connector, API, end-to-end
 docs/SCHEMA.md         why the data model looks like this
+docs/PC_TRACKING.md    the PC source: architecture and decisions
+docs/PC_EVENTS.md      the PC event reference
 ```
 
 ---
@@ -365,6 +413,9 @@ These cost real time. They are written down so they only cost it once.
 |---|---|
 | [`ROADMAP.md`](ROADMAP.md) | version breakdown, decisions, bugs found and why |
 | [`docs/SCHEMA.md`](docs/SCHEMA.md) | justification of the data model |
+| [`docs/PC_TRACKING.md`](docs/PC_TRACKING.md) | the PC source: audit, architecture, raw vs derived, privacy |
+| [`docs/PC_EVENTS.md`](docs/PC_EVENTS.md) | the 21 PC event types, field by field |
+| [`pc/tracker/README.md`](pc/tracker/README.md) | installing and running the tracker |
 
 **This is a learning project as much as a working one.** The goal was never a
 finished tool, it was understanding every line it contains. `ROADMAP.md`

@@ -59,7 +59,7 @@ from database.records import MetricSpec
 # Les connecteurs du projet. Ajouter une source = ajouter une ligne ici,
 # et c'est le seul endroit du code ou la liste existe.
 CONNECTEURS = ["polar.mapper", "food.mapper", "sensors.bedroom",
-               "kindle.mapper"]
+               "kindle.mapper", "pc.mapper"]
 
 # Modules qu'un connecteur ne doit jamais importer, meme indirectement
 # dans son propre fichier. La frontiere est la, et nulle part ailleurs.

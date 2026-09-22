@@ -28,3 +28,6 @@ data/ciqual/
 # se souvenir de ce que j'ai mange le 12 mars. C'est le seul dossier du
 # projet dont la perte est definitive : le sauvegarder ailleurs.
 data/food/
+
+# --- API d'ingestion : cle generee au premier `python main.py serve`.
+data/api_key.txt

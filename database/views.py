@@ -536,9 +536,203 @@ ORDER BY l.derniere DESC NULLS LAST
 """
 
 
+# ---------------------------------------------------------------------
+# Les vues PC  (cinquieme source : pc/mapper.py, docs/PC_TRACKING.md)
+#
+# LA COUCHE DERIVEE. Le tracker ne calcule aucun total : il mesure des
+# intervalles et des comptes. "VS Code = 43 min", "3 changements de
+# contexte" se calculent ICI, a la lecture - un total stocke deviendrait
+# une seconde verite (lecon de v_nutrition).
+#
+# Une ligne `source` par machine ("pc:windows-main") : la colonne
+# `device` en est tiree, et toutes les vues se lisent pareil pour Windows
+# et pour Linux.
+#
+# Un intervalle a cheval sur minuit compte pour le jour de son DEBUT.
+# ---------------------------------------------------------------------
+
+V_PC_FOCUS = f"""
+CREATE VIEW v_pc_focus AS
+SELECT split_part(s.code, ':', 2)                      AS device,
+       (e.started_at AT TIME ZONE '{LOCAL_TZ}')::date  AS jour,
+       e.started_at,
+       e.ended_at,
+       EXTRACT(epoch FROM e.ended_at - e.started_at)   AS duree_s,
+       e.payload ->> 'app'                             AS app,
+       e.payload ->> 'app_name'                        AS app_name,
+       e.payload ->> 'window_title'                    AS titre,
+       (e.payload ->> 'input_active_s')::numeric       AS actif_s,
+       e.payload ->> 'end_reason'                      AS raison_fin
+FROM episode e
+JOIN source s ON s.id = e.source_id
+WHERE s.code LIKE 'pc:%' AND e.kind = 'app_focus'
+"""
+
+# Temps par application et par jour. "premier plan" = la fenetre etait
+# devant ; "actives" = il y avait au moins une entree clavier/souris dans
+# la seconde. L'ecart entre les deux est la difference entre "VS Code
+# ouvert 3 h" et "VS Code utilise 1 h 45".
+V_PC_APPS_DAILY = """
+CREATE VIEW v_pc_apps_daily AS
+SELECT device, jour, app,
+       max(app_name)                              AS app_name,
+       count(*)                                   AS fenetres,
+       round((sum(duree_s) / 60)::numeric, 1)     AS minutes_premier_plan,
+       round((sum(actif_s) / 60)::numeric, 1)     AS minutes_actives
+FROM v_pc_focus
+GROUP BY device, jour, app
+ORDER BY jour DESC, minutes_premier_plan DESC
+"""
+
+# Un changement de contexte = une fenetre fermee par "switch" suivie, a
+# moins de 5 min, d'une fenetre d'une AUTRE application. Un verrouillage,
+# une veille ou un changement d'onglet dans la meme application n'en
+# sont pas.
+V_PC_CONTEXT_SWITCHES = f"""
+CREATE VIEW v_pc_context_switches AS
+WITH f AS (
+    SELECT device, started_at, app,
+           lag(app)        OVER w AS app_avant,
+           lag(ended_at)   OVER w AS fin_avant,
+           lag(raison_fin) OVER w AS raison_avant
+    FROM v_pc_focus
+    WINDOW w AS (PARTITION BY device ORDER BY started_at)
+)
+SELECT device,
+       (started_at AT TIME ZONE '{LOCAL_TZ}')::date AS jour,
+       started_at                                  AS instant,
+       app_avant                                   AS de,
+       app                                         AS vers,
+       EXTRACT(epoch FROM started_at - fin_avant)  AS ecart_s
+FROM f
+WHERE app_avant IS NOT NULL
+  AND app_avant <> app
+  AND raison_avant = 'switch'
+  AND started_at - fin_avant < interval '5 minutes'
+"""
+
+V_PC_DOMAINS_DAILY = f"""
+CREATE VIEW v_pc_domains_daily AS
+SELECT split_part(s.code, ':', 2)                               AS device,
+       (e.started_at AT TIME ZONE '{LOCAL_TZ}')::date           AS jour,
+       COALESCE(e.payload ->> 'domain', '(prive)')              AS domaine,
+       count(*)                                                 AS pages,
+       round((sum(EXTRACT(epoch FROM e.ended_at - e.started_at))
+              / 60)::numeric, 1)                                AS minutes,
+       round((sum((e.payload ->> 'input_active_s')::numeric)
+              / 60)::numeric, 1)                                AS minutes_actives
+FROM episode e
+JOIN source s ON s.id = e.source_id
+WHERE s.code LIKE 'pc:%' AND e.kind = 'browser_page'
+GROUP BY 1, 2, 3
+ORDER BY jour DESC, minutes DESC
+"""
+
+# Une ligne par machine et par jour. `minutes_actives` vient des comptes
+# d'entrees (pc.input.active_s), pas des fenetres : c'est le temps passe
+# a SE SERVIR de la machine.
+V_PC_DAILY = f"""
+CREATE VIEW v_pc_daily AS
+WITH pc AS (
+    SELECT id, split_part(code, ':', 2) AS device
+    FROM source WHERE code LIKE 'pc:%'
+),
+episodes AS (
+    SELECT pc.device,
+           (e.started_at AT TIME ZONE '{LOCAL_TZ}')::date AS jour,
+           e.kind,
+           EXTRACT(epoch FROM e.ended_at - e.started_at)  AS duree_s,
+           e.payload
+    FROM episode e
+    JOIN pc ON pc.id = e.source_id
+),
+par_episode AS (
+    SELECT device, jour,
+           sum(duree_s) FILTER (WHERE kind = 'app_focus')      / 60 AS premier_plan,
+           sum(duree_s) FILTER (WHERE kind = 'idle')           / 60 AS inactif,
+           sum(duree_s) FILTER (WHERE kind = 'session_locked') / 60 AS verrouille,
+           sum(duree_s) FILTER (WHERE kind = 'system_sleep')   / 60 AS veille,
+           sum(duree_s) FILTER (WHERE kind = 'media_playback') / 60 AS media,
+           count(*) FILTER (WHERE kind = 'git_commit')              AS commits,
+           sum((payload ->> 'insertions')::int)
+               FILTER (WHERE kind = 'git_commit')                   AS lignes_ajoutees,
+           sum((payload ->> 'deletions')::int)
+               FILTER (WHERE kind = 'git_commit')                   AS lignes_supprimees,
+           count(*) FILTER (WHERE kind = 'terminal_command')        AS commandes,
+           count(*) FILTER (WHERE kind = 'file_change')             AS fichiers,
+           count(*) FILTER (WHERE kind = 'notification')            AS notifications,
+           count(*) FILTER (WHERE kind = 'app_launch')              AS lancements
+    FROM episodes
+    GROUP BY device, jour
+),
+mesures AS (
+    SELECT pc.device,
+           (o.observed_at AT TIME ZONE '{LOCAL_TZ}')::date AS jour,
+           sum(o.value) FILTER (WHERE m.code = 'pc.input.active_s') / 60 AS actives,
+           sum(o.value) FILTER (WHERE m.code = 'pc.input.keys')           AS touches,
+           sum(o.value) FILTER (WHERE m.code = 'pc.input.clicks')         AS clics,
+           sum(o.value) FILTER (WHERE m.code = 'pc.input.scroll')         AS molette,
+           min(o.observed_at) FILTER (WHERE m.code = 'pc.input.active_s') AS premiere,
+           max(o.observed_at) FILTER (WHERE m.code = 'pc.input.active_s') AS derniere,
+           avg(o.value) FILTER (WHERE m.code = 'pc.cpu_pct')              AS cpu,
+           avg(o.value) FILTER (WHERE m.code = 'pc.ram_pct')              AS ram,
+           sum(o.value) FILTER (WHERE m.code = 'pc.net_down_bytes') / 1e6 AS recu_mo,
+           sum(o.value) FILTER (WHERE m.code = 'pc.net_up_bytes') / 1e6   AS envoye_mo
+    FROM observation o
+    JOIN pc ON pc.id = o.source_id
+    JOIN metric m ON m.id = o.metric_id
+    GROUP BY 1, 2
+),
+changements AS (
+    SELECT device, jour, count(*) AS n
+    FROM v_pc_context_switches
+    GROUP BY 1, 2
+),
+cles AS (
+    SELECT device, jour FROM par_episode
+    UNION SELECT device, jour FROM mesures
+)
+SELECT k.device, k.jour,
+       round(e.premier_plan::numeric, 1)   AS minutes_premier_plan,
+       round(i.actives::numeric, 1)        AS minutes_actives,
+       round(e.inactif::numeric, 1)        AS minutes_inactif,
+       round(e.verrouille::numeric, 1)     AS minutes_verrouille,
+       round(e.veille::numeric, 1)         AS minutes_veille,
+       round(e.media::numeric, 1)          AS minutes_media,
+       COALESCE(c.n, 0)                    AS changements_contexte,
+       i.touches::bigint                   AS touches,
+       i.clics::bigint                     AS clics,
+       i.molette::bigint                   AS crans_molette,
+       (i.premiere AT TIME ZONE '{LOCAL_TZ}')::time(0) AS premiere_entree,
+       (i.derniere AT TIME ZONE '{LOCAL_TZ}')::time(0) AS derniere_entree,
+       COALESCE(e.commits, 0)              AS commits,
+       e.lignes_ajoutees,
+       e.lignes_supprimees,
+       COALESCE(e.commandes, 0)            AS commandes,
+       COALESCE(e.fichiers, 0)             AS fichiers,
+       COALESCE(e.notifications, 0)        AS notifications,
+       COALESCE(e.lancements, 0)           AS lancements,
+       round(i.cpu::numeric, 1)            AS cpu_moyen,
+       round(i.ram::numeric, 1)            AS ram_moyenne,
+       round(i.recu_mo::numeric, 1)        AS reseau_recu_mo,
+       round(i.envoye_mo::numeric, 1)      AS reseau_envoye_mo
+FROM cles k
+LEFT JOIN par_episode e ON e.device = k.device AND e.jour = k.jour
+LEFT JOIN mesures     i ON i.device = k.device AND i.jour = k.jour
+LEFT JOIN changements c ON c.device = k.device AND c.jour = k.jour
+ORDER BY k.jour DESC, k.device
+"""
+
+
 ALL_VIEWS = {"v_daily": V_DAILY, "v_sleep": V_SLEEP,
              "v_nutrition": V_NUTRITION, "v_chambre": V_CHAMBRE,
-             "v_lecture": V_LECTURE, "v_livres": V_LIVRES}
+             "v_lecture": V_LECTURE, "v_livres": V_LIVRES,
+             # Ordre significatif : les vues PC suivantes lisent v_pc_focus.
+             "v_pc_focus": V_PC_FOCUS,
+             "v_pc_apps_daily": V_PC_APPS_DAILY,
+             "v_pc_context_switches": V_PC_CONTEXT_SWITCHES,
+             "v_pc_domains_daily": V_PC_DOMAINS_DAILY,
+             "v_pc_daily": V_PC_DAILY}
 
 
 def create_views(connection) -> list[str]:
