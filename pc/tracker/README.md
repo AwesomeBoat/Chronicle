@@ -29,17 +29,28 @@ Au premier lancement, la clé d'API est générée dans `data\api_key.txt`
 (hors git). C'est elle que chaque tracker présente.
 
 Démarrage automatique de l'API, sans fenêtre (à enregistrer soi-même — c'est
-une modification du système, la règle de Chronicle). Dans PowerShell :
+une modification du système, la règle de Chronicle). Dans PowerShell, une
+seule commande, à coller telle quelle (adapter le chemin si le dépôt est
+ailleurs) :
 
 ```powershell
-$chronicle = "C:\Users\everv\Desktop\CodeMastery\PROJECTS\Chronicle"
-$action = New-ScheduledTaskAction -Execute "$chronicle\.venv\Scripts\pythonw.exe" -Argument "main.py serve --ensure-db" -WorkingDirectory $chronicle
-Register-ScheduledTask -TaskName "Chronicle API" -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME)
+Register-ScheduledTask -TaskName "Chronicle API" -Action (New-ScheduledTaskAction -Execute "C:\Users\everv\Desktop\CodeMastery\PROJECTS\Chronicle\.venv\Scripts\pythonw.exe" -Argument "main.py serve --ensure-db" -WorkingDirectory "C:\Users\everv\Desktop\CodeMastery\PROJECTS\Chronicle") -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME)
 ```
 
-`--ensure-db` démarre le conteneur PostgreSQL s'il est arrêté (Docker Desktop
-doit lui-même démarrer à l'ouverture de session). Si la base manque, l'API
-répond `503` et les trackers gardent leurs événements : rien n'est perdu.
+Puis la lancer sans attendre la prochaine ouverture de session, et vérifier :
+
+```powershell
+schtasks /Run /TN "Chronicle API"
+Get-ScheduledTask -TaskName "Chronicle*" | Select-Object TaskName, State
+```
+
+`pythonw.exe` : aucune fenêtre noire. `--ensure-db` démarre le conteneur
+PostgreSQL s'il est arrêté — il faut donc que **Docker Desktop démarre aussi
+à l'ouverture de session** (*Settings → General → Start Docker Desktop when
+you sign in*). Si la base manque quand même, l'API répond `503` et les
+trackers gardent leurs événements : rien n'est perdu.
+
+L'API sert aussi le dashboard : <http://127.0.0.1:8780/dashboard/> (§ 7).
 
 Pour accepter d'autres PC du réseau local (le poste Omarchy) :
 `serve --host 0.0.0.0`, puis autoriser Python dans le pare-feu Windows, **réseau
@@ -62,6 +73,16 @@ Sur une machine **sans** Chronicle, un venv léger suffit :
 python -m venv .venv-tracker
 .venv-tracker\Scripts\python.exe -m pip install -r pc\tracker\requirements.txt
 ```
+
+`install` lit la configuration écrite par `init` : les deux commandes se
+suivent dans cet ordre, sinon `install` s'arrête sur « Aucune configuration »
+(§ 8). Vérifier ensuite :
+
+```powershell
+.venv\Scripts\python.exe -m pc.tracker status
+```
+
+Attendu : « en marche **oui** » et « démarrage auto **oui** ».
 
 `install` crée la tâche planifiée « Chronicle PC Tracker » :
 
@@ -261,6 +282,7 @@ GET /api/v1/pc/day?device=all&day=AAAA-MM-JJ       la chronologie d'un jour
 | `check` : clé refusée | `[chronicle] api_key` = contenu de `data\api_key.txt` |
 | rien dans `v_pc_*` | `python main.py initdb` (crée les vues), puis `python main.py dbstats` |
 | dashboard vide | la période ? la machine choisie ? « Santé de la collecte » dit si le tracker a tourné |
+| `install` : « Aucune configuration dans … » | comparer `dir "$env:LOCALAPPDATA\ChroniclePC"` et `python -m pc.tracker paths` ; si le fichier manque vraiment : refaire `init` (avec `--force`) |
 | « Un tracker tourne déjà » | `python -m pc.tracker stop`, ou la tâche planifiée l'a déjà lancé |
 | pas de pages web | extension chargée ? jeton collé ? `options` → « Enregistrer et tester » |
 | pas de commandes | nouveaux terminaux seulement ; politique PowerShell `RemoteSigned` requise |
@@ -305,8 +327,9 @@ SELECT * FROM v_pc_context_switches WHERE jour = current_date;
 ## 10. Désinstaller
 
 ```powershell
-python -m pc.tracker uninstall            # tache + hooks de terminal
+python -m pc.tracker uninstall            # tache du tracker + hooks de terminal
 python -m pc.tracker uninstall --purge    # + configuration, file, journaux
+schtasks /Delete /TN "Chronicle API" /F   # la tache de l'API (§ 1.1)
 ```
 
 L'extension se retire depuis `chrome://extensions`. Les données déjà
